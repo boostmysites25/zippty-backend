@@ -8,11 +8,21 @@ import crypto from "crypto";
 
 const router = express.Router();
 
-// Initialize Razorpay
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+// Lazy initialization of Razorpay instance
+let razorpayInstance = null;
+
+const getRazorpayInstance = () => {
+  if (!razorpayInstance) {
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      throw new Error('Razorpay credentials not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your .env file');
+    }
+    razorpayInstance = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+  }
+  return razorpayInstance;
+};
 
 // Get user details with populated addresses
 router.get("/", verifyToken, async (req, res) => {
@@ -145,7 +155,7 @@ router.post("/order", verifyToken, async (req, res) => {
     // Create Razorpay order
     let razorpayOrder;
     try {
-      razorpayOrder = await razorpay.orders.create({
+      razorpayOrder = await getRazorpayInstance().orders.create({
         amount: totalAmount * 100, // Convert to paise
         currency: "INR",
         receipt: `order_${Date.now()}`,
@@ -153,6 +163,15 @@ router.post("/order", verifyToken, async (req, res) => {
       console.log("Razorpay order created:", razorpayOrder);
     } catch (razorpayError) {
       console.error("Razorpay order creation failed:", razorpayError);
+      
+      // Handle Razorpay configuration errors specifically
+      if (razorpayError.message.includes('Razorpay credentials not configured')) {
+        return res.status(500).json({
+          message: "Payment gateway not configured. Please contact administrator.",
+          error: "Payment gateway not configured"
+        });
+      }
+      
       return res.status(500).json({
         message: "Failed to create Razorpay order",
         error: razorpayError.message,

@@ -5,20 +5,25 @@ import {
   getAllProducts,
   getProductById,
   updateProduct,
+  getProductStats,
+  bulkDeleteProducts,
+  updateProductStock,
 } from "../controllers/productController.js";
-import authMiddleware from "../middleware/authMiddleware.js";
+import { adminAuth } from "../middleware/adminMiddleware.js";
 import upload from "../middleware/multer.js";
 
 const router = express.Router();
 
-// Public route
+// Public routes
 router.get("/", getAllProducts);
 router.get("/:id", getProductById);
 
-// Protected routes
-// authMiddleware
-router.post("/", upload.array("images", 9), addProduct);
-router.put("/:id", upload.array("images", 9), updateProduct);
-router.delete("/:id", deleteProduct);
+// Admin routes (require admin authentication)
+router.post("/", adminAuth, upload.array("images", 9), addProduct);
+router.put("/:id", adminAuth, upload.array("images", 9), updateProduct);
+router.delete("/:id", adminAuth, deleteProduct);
+router.delete("/bulk", adminAuth, bulkDeleteProducts);
+router.patch("/:id/stock", adminAuth, updateProductStock);
+router.get("/admin/stats", adminAuth, getProductStats);
 
 export default router;

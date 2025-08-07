@@ -110,10 +110,34 @@ const addProduct = async (req, res) => {
 // Get all products (Public)
 const getAllProducts = async (req, res) => {
   try {
-    const { page = 1, limit = 12 } = req.query;
+    const { page = 1, limit = 12, search, category, sortBy, sortOrder } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const products = await Product.find().skip(skip).limit(parseInt(limit));
-    const total = await Product.countDocuments();
+    
+    // Build filter object
+    const filter = {};
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+    if (category) {
+      filter.category = category;
+    }
+
+    // Build sort object
+    const sort = {};
+    if (sortBy) {
+      sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    } else {
+      sort.createdAt = -1; // Default sort by creation date
+    }
+
+    const products = await Product.find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit));
+    const total = await Product.countDocuments(filter);
 
     res.status(200).json({
       message: "Products retrieved successfully",
@@ -298,10 +322,124 @@ const deleteProduct = async (req, res) => {
   }
 };
 
+// Get product statistics for admin dashboard
+const getProductStats = async (req, res) => {
+  try {
+    const totalProducts = await Product.countDocuments();
+    const productsThisMonth = await Product.countDocuments({
+      createdAt: { $gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) }
+    });
+    
+    // Get category distribution
+    const categoryStats = await Product.aggregate([
+      {
+        $group: {
+          _id: "$category",
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { count: -1 }
+      }
+    ]);
+
+    // Get low stock products (assuming stock field exists)
+    const lowStockProducts = await Product.find({ stock: { $lt: 10 } }).countDocuments();
+
+    res.status(200).json({
+      status: true,
+      message: "Product statistics retrieved successfully",
+      data: {
+        totalProducts,
+        productsThisMonth,
+        categoryStats,
+        lowStockProducts
+      }
+    });
+  } catch (error) {
+    console.error("Error getting product stats:", error);
+    res.status(500).json({
+      status: false,
+      message: "Failed to get product statistics"
+    });
+  }
+};
+
+// Bulk delete products (Admin only)
+const bulkDeleteProducts = async (req, res) => {
+  try {
+    const { productIds } = req.body;
+
+    if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+      return res.status(400).json({
+        status: false,
+        message: "Product IDs array is required"
+      });
+    }
+
+    const result = await Product.deleteMany({ _id: { $in: productIds } });
+
+    res.status(200).json({
+      status: true,
+      message: `${result.deletedCount} products deleted successfully`,
+      data: { deletedCount: result.deletedCount }
+    });
+  } catch (error) {
+    console.error("Error bulk deleting products:", error);
+    res.status(500).json({
+      status: false,
+      message: "Failed to delete products"
+    });
+  }
+};
+
+// Update product stock (Admin only)
+const updateProductStock = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { stock } = req.body;
+
+    if (stock === undefined || stock < 0) {
+      return res.status(400).json({
+        status: false,
+        message: "Valid stock quantity is required"
+      });
+    }
+
+    const product = await Product.findByIdAndUpdate(
+      id,
+      { stock },
+      { new: true, runValidators: true }
+    );
+
+    if (!product) {
+      return res.status(404).json({
+        status: false,
+        message: "Product not found"
+      });
+    }
+
+    res.status(200).json({
+      status: true,
+      message: "Product stock updated successfully",
+      data: product
+    });
+  } catch (error) {
+    console.error("Error updating product stock:", error);
+    res.status(500).json({
+      status: false,
+      message: "Failed to update product stock"
+    });
+  }
+};
+
 export {
   addProduct,
   getAllProducts,
   getProductById,
   updateProduct,
   deleteProduct,
+  getProductStats,
+  bulkDeleteProducts,
+  updateProductStock,
 };

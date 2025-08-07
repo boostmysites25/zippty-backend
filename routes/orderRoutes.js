@@ -9,27 +9,21 @@ import {
   updateOrderStatus,
 } from "../controllers/orderController.js";
 import { verifyToken } from "../middleware/verifyToken.js";
+import { adminAuth } from "../middleware/adminMiddleware.js";
 
 const router = express.Router();
 
-// Get all order
-router.get("/", getAllOrders);
-// Create a new order
+// Public routes (for admin access)
+router.get("/", adminAuth, getAllOrders);
+
+// User routes (require user authentication)
 router.post("/create", verifyToken, createOrder);
-
-// Verify payment
 router.post("/verify-payment", verifyToken, verifyPayment);
-
-// Get user orders
 router.get("/user-orders", verifyToken, getUserOrders);
-
-// Get order by ID
 router.get("/:orderId", verifyToken, getOrderById);
-
-// Get order by ID
 router.delete("/:orderId/cancel", verifyToken, cancelOrder);
 
-// PATCH /orders/:orderId/status
-router.patch("/:orderId/status", updateOrderStatus);
+// Admin routes (require admin authentication)
+router.patch("/:orderId/status", adminAuth, updateOrderStatus);
 
 export default router;
